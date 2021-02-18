@@ -72,7 +72,7 @@ class SnDebugHeader:
         # Keep current position for tracking
         currentPos = 0
 
-        # Read out the magic 'SNR2'
+        # Read out the magic 'SNR1' or 'SNR2'
         self.magic = idaapi.get_32bit(parseEa + currentPos)
         currentPos = currentPos + 4
 
@@ -83,7 +83,9 @@ class SnDebugHeader:
         currentPos = currentPos + 4
         self.unknown08 = idaapi.get_32bit(parseEa + currentPos)
         currentPos = currentPos + 4
-        self.unknown0C = idaapi.get_32bit(parseEa + currentPos)
+        
+        # Start of symbol table
+        self.symTabStart = idaapi.get_32bit(parseEa + currentPos)
         currentPos = currentPos + 4
 
         # RE4 == 7409, SOCOM = ?
@@ -98,18 +100,18 @@ class SnDebugHeader:
         currentPos = currentPos + 4
         self.unknown1C = idaapi.get_32bit(parseEa + currentPos)
         currentPos = currentPos + 4
-        self.unknown20 = idaapi.get_32bit(parseEa + currentPos)
-        currentPos = currentPos + 4
-        self.unknown24 = idaapi.get_32bit(parseEa + currentPos)
-        currentPos = currentPos + 4
-        self.unknown28 = idaapi.get_32bit(parseEa + currentPos)
-        currentPos = currentPos + 4
-
+        
         # Offset to end of table, from this point on is zeros
         self.endOfTable = idaapi.get_32bit(parseEa + currentPos)
         currentPos = currentPos + 4
         
         # More unknowns
+        self.unknown24 = idaapi.get_32bit(parseEa + currentPos)
+        currentPos = currentPos + 4
+        self.unknown28 = idaapi.get_32bit(parseEa + currentPos)
+        currentPos = currentPos + 4
+        self.unknown2C = idaapi.get_32bit(parseEa + currentPos)
+        currentPos = currentPos + 4
         self.unknown30 = idaapi.get_32bit(parseEa + currentPos)
         currentPos = currentPos + 4
         self.unknown34 = idaapi.get_32bit(parseEa + currentPos)
@@ -170,7 +172,7 @@ class ps2_sndebugplugin_t(idaapi.plugin_t):
         
         # read out the header
         self.header = SnDebugHeader(snDebugStartEa)
-        if self.header.magic != 0x32524e53:
+        if self.header.magic != 0x31524e53 and self.header.magic != 0x32524e53:
             idaapi.msg("err: invalid header\n")
             return
         
@@ -179,7 +181,10 @@ class ps2_sndebugplugin_t(idaapi.plugin_t):
         endOffset = self.header.endOfTable
 
         idaapi.msg("info: preparing to parse (%d) symbols... [endOffset: (%x)]\n" % (symbolCount, endOffset))
-        currentPos = 60
+        
+        # Set current position to first string
+        firstEntry = idaapi.get_32bit(self.header.symTabStart)
+        currentPos = (firstEntry - snDebugStartEa) 
 
         for _ in range(symbolCount):
             symOffset = snDebugStartEa + currentPos
@@ -189,11 +194,11 @@ class ps2_sndebugplugin_t(idaapi.plugin_t):
             # Add it to our list
             self.symbolList.append(SnStringEntry(symOffset, symStringData))
         
-        # Align our current position in .sndebug offset
-        currentPos = Align(currentPos, 4)
+        # Set current position to start of symbol table
+        currentPos = self.header.symTabStart
 
         for _ in range(symbolCount):
-            self.entries.append(SnDebugEntry(snDebugStartEa + currentPos))
+            self.entries.append(SnDebugEntry(currentPos))
             currentPos += 12 # skip the size of the entry
         
         for index, entry in enumerate(self.entries):
